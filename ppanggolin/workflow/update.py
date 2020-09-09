@@ -41,31 +41,37 @@ def launch(args):
     pangenome = Pangenome()
     pangenome.addFile(args.pangenome)
     if pangenome.parameters["cluster"]["read_clustering_from_file"]:
-        raise Exception("This does not work for pangenomes whose clustering was provided previously. However, it is possible and was not been implemented as we did not have the use for it. If you're interested in that feature please make yourself known on the PPanGGOLiN github page.")
+        raise Exception("This does not work for pangenomes whose clustering was provided previously. However, it is possible and was not been implemented as we did not have the use for it. If you're interested you can make yourself known on the PPanGGOLiN github page.")
     #checking that there is no conflict between given name and former names
     checkInputNames(getOrganismsNames(pangenome), args.fasta if args.fasta is not None else args.anno)
 
     #check conflicts between the way genomes are passed now, and the way they were passed before, and warn the user
 
     #annotate the new genomes and add them to the pangenome
+
+    start_anno = time.time()
+
     if args.fasta is not None:
-        start_anno = time.time()
+        
         #to cope with old pangenomes that did not have this option
         contig_filter = pangenome.parameters["annotation"].get("contig_filter")
         if contig_filter is None:
             contig_filter = 0
-
         annotatePangenome(pangenome, args.fasta, args.tmpdir, args.cpu, translation_table=pangenome.parameters["annotation"]["translation_table"], kingdom=pangenome.parameters["annotation"]["kingdom"], norna= not pangenome.parameters["annotation"]["annotate_RNA"], overlap = pangenome.parameters["annotation"]["remove_Overlapping_CDS"], contig_filter = contig_filter)
-        annotime = time.time() - start_anno
 
     if args.anno is not None:
-        raise NotImplementedError()
+        read_pseudo = pangenome.parameters["annotation"].get("use_pseudo", False)
+        readAnnotations(pangenome, args.anno, args.cpu, pseudo=read_pseudo)
+
+    annotime = time.time() - start_anno
 
     formerParameters = deepcopy(pangenome.parameters)
     formerStatuses = deepcopy(pangenome.status)
 
+    readPangenome(pangenome, annotation = True, geneSequences=True)#read all of the old annotations and gene sequences
+
     start_writing = time.time()
-    writePangenome(pangenome, pangenome.file, force=False)#the force parameter at this point should not matter, as we will not overwrite anything.
+    writePangenome(pangenome, pangenome.file, force=True)
     writing_time = time.time() - start_writing
 
     #now we have all our genomes annotated, but some are loaded and some are not. 
@@ -73,10 +79,6 @@ def launch(args):
     #Erasing formerly computed pangenome
     ErasePangenome(pangenome, geneFamilies = True)
     
-    #reloading everything
-    pangenome = Pangenome()
-    pangenome.addFile(args.pangenome)
-    readPangenome(pangenome, annotation = True)
     #rerunning each workflow that was formerly computed with the parameters that were used.
     force = True
     if formerStatuses["genesClustered"] != "No":

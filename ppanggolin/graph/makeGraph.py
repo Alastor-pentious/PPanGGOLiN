@@ -68,7 +68,7 @@ def computeNeighborsGraph(pangenome, remove_copy_number = 0, force = False):
                                 pangenome.addEdge(gene, prev)
                         prev = gene
                 except AttributeError:
-                    raise AttributeError("a Gene does not have a GeneFamily object associated")
+                    raise AttributeError(f"a Gene (ID:{gene.ID}, locus tag:{gene.local_identifier}) does not have a GeneFamily object associated")
             if contig.is_circular and len(contig.genes) > 0:
                 pangenome.addEdge(contig.genes[0],prev)
     logging.getLogger().info("Done making the neighbors graph.")

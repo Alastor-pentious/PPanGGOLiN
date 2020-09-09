@@ -307,7 +307,6 @@ def read_org_gff(organism, gff_file_path, circular_contigs, getSeq, pseudo = Fal
                 rna.add_dna(get_dna_sequence(contigSequences[contig.name], rna))
     return org, hasFasta
 
-
 def launchReadAnno(args):
     return readAnnoFile(*args)
 
@@ -373,7 +372,7 @@ def getGeneSequencesFromFastas(pangenome, fasta_file):
 def launchAnnotateOrganism(pack):
     return annotate_organism(*pack)
 
-def annotatePangenome(pangenome, fastaList, tmpdir, cpu, translation_table="11", kingdom = "bacteria", norna=False,  overlap=True, contig_filter=0):
+def annotatePangenome(pangenome, fastaList, tmpdir, cpu, translation_table="11", kingdom = "bacteria", norna=False,  overlap=True, contig_filter=1):
     logging.getLogger().info(f"Reading {fastaList} the list of organism files")
 
     arguments = []

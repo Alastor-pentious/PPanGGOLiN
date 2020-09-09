@@ -8,6 +8,7 @@ import subprocess
 from collections import defaultdict
 import os
 import argparse
+import time
 
 #installed libraries
 import networkx
@@ -196,6 +197,7 @@ def clustering(pangenome, tmpdir, cpu , defrag = False, code = "11", coverage = 
         aln = alignRep(rep, newtmpdir, cpu, coverage, identity)
         genes2fam, fam2seq = refineClustering(tsv, aln, fam2seq)
         pangenome.status["defragmented"] = "Computed"
+
     newtmpdir.cleanup()
     read_fam2seq(pangenome, fam2seq)
     read_gene2fam(pangenome, genes2fam)

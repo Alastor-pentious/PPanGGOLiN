@@ -11,6 +11,9 @@ import pkg_resources
 from tqdm import tqdm
 import tables
 
+#local libraries
+from ppanggolin.formats import read_chunks, readAnnotation
+
 def geneDesc(orgLen, contigLen, IDLen, typeLen, nameLen, productLen, maxLocalId):
     return {
             'organism':tables.StringCol(itemsize=orgLen),
@@ -72,15 +75,17 @@ def getMaxLenAnnotations(pangenome):
 
     return maxOrgLen, maxContigLen, maxGeneIDLen, maxTypeLen, maxNameLen, maxProductLen, maxLocalId
 
-def writeAnnotations(pangenome, h5f):
+def writeAnnotations(pangenome, h5f, force):
     """
-        Function writing all of the pangenome's annotations
+        Function writing all of the pangenome's annotations that are in memory.
+        There can be annotation written in the h5 file, and they should not include genes that we are writing during this step.
     """
-    if '/annotations' not in h5f:#if it exists, this is an update operation.
-        annotation = h5f.create_group("/","annotations","Annotations of the pangenome's organisms")
-        geneTable = h5f.create_table(annotation, "genes", geneDesc(*getMaxLenAnnotations(pangenome)), expectedrows=len(pangenome.genes))
-    else:
-        geneTable = h5f.root.annotations.genes
+    if '/annotations' in h5f and force is True:
+        logging.getLogger().info("Erasing the formerly computed gene sequences...")
+        h5f.remove_node('/', 'annotations')#erasing the table, and rewriting a new one.
+
+    annotation = h5f.create_group("/","annotations","Annotations of the pangenome's organisms")
+    geneTable = h5f.create_table(annotation, "genes", geneDesc(*getMaxLenAnnotations(pangenome)), expectedrows=len(pangenome.genes))
 
     nbRNA = 0
     for org in pangenome.organisms:
@@ -142,11 +147,13 @@ def geneSequenceDesc(geneIDLen, geneSeqLen, geneTypeLen):
         "type":tables.StringCol(itemsize=geneTypeLen)
     }
 
-def writeGeneSequences(pangenome, h5f):
-    if '/geneSequences' not in h5f: 
-        geneSeq = h5f.create_table("/","geneSequences", geneSequenceDesc(*getGeneSequencesLen(pangenome)), expectedrows=len(pangenome.genes))
-    else:
-        geneSeq = h5f.root.geneSequences
+def writeGeneSequences(pangenome, h5f, force):
+    if '/geneSequences' in h5f and force is True:
+        logging.getLogger().info("Erasing the formerly computed gene sequences...")
+        h5f.remove_node('/', 'geneSequences')#erasing the table, and rewriting a new one.
+
+    geneSeq = h5f.create_table("/","geneSequences", geneSequenceDesc(*getGeneSequencesLen(pangenome)), expectedrows=len(pangenome.genes))
+
     geneRow = geneSeq.row
     bar = tqdm(pangenome.genes, unit = "gene")
     for gene in bar:
@@ -156,7 +163,6 @@ def writeGeneSequences(pangenome, h5f):
         geneRow.append()
     geneSeq.flush()
     bar.close()
-
 
 def geneFamDesc(maxNameLen, maxSequenceLength, maxPartLen):
      return {
@@ -436,6 +442,24 @@ def updateGeneFragments(pangenome, h5f):
     bar.close()
     table.flush()
 
+def checkRewrite(currDesc, tabDesc):
+    """
+        Will verify that the description of each column of an already written table fit the lenghts of the new information that we want to write.
+        If not, will return 'True', specifying that reading the whole thing and writing it with new description is needed.
+    """
+    rewrite = False
+    for name in tabDesc._v_names:
+        #this happens only for nested columns. In the current state of the code there is only one level in one table.
+        #This should probably be some sort of recursive function to be 'cleaner', and to cope with more levels of nestedness.
+        if type(getattr(tabDesc, name)) == tables.description.Description:
+            othercolnames = getattr(tabDesc, name)._v_names
+            for othername in othercolnames:
+                if getattr(getattr(tabDesc, name), othername).itemsize < currDesc.get(name).get(othername).itemsize:
+                    return True
+        else:
+            if getattr(tabDesc, name).itemsize < currDesc.get(name).itemsize:
+                return True
+    return False
 
 def ErasePangenome(pangenome, graph=False, geneFamilies = False, partition = False, rgp = False, spots = False):
     """ erases tables from a pangenome .h5 file """
@@ -481,11 +505,11 @@ def writePangenome(pangenome, filename, force):
         pangenome is the corresponding pangenome object, filename the h5 file and status what has been modified.
     """
 
-    compressionFilter = tables.Filters(complevel=1, complib='blosc:lz4')#test the other compressors from blosc, this one was arbitrarily chosen.
+    compressionFilter = tables.Filters(complevel=1, complib='blosc:lz4')
     h5f = tables.open_file(filename,"a", filters=compressionFilter)
     if pangenome.status["genomesAnnotated"] == "Computed":
         logging.getLogger().info("Writing genome annotations...")
-        writeAnnotations(pangenome, h5f)
+        writeAnnotations(pangenome, h5f, force)
         pangenome.status["genomesAnnotated"] = "Loaded"
     elif pangenome.status["genomesAnnotated"] in ["Loaded", "inFile"]:
         pass
@@ -494,7 +518,7 @@ def writePangenome(pangenome, filename, force):
 
     if pangenome.status["geneSequences"] == "Computed":
         logging.getLogger().info("writing the protein coding gene dna sequences")
-        writeGeneSequences(pangenome, h5f)
+        writeGeneSequences(pangenome, h5f, force)
         pangenome.status["geneSequences"] = "Loaded"
 
     if pangenome.status["genesClustered"] == "Computed":
